@@ -39,6 +39,26 @@ describe('helpers::shouldBypassProxy', function () {
     assert.strictEqual(shouldBypassProxy('http://[::1]:8080/'), true);
   });
 
+  it('should bypass proxy for 127.0.0.1 when no_proxy contains localhost', function () {
+    setNoProxy('localhost');
+    assert.strictEqual(shouldBypassProxy('http://127.0.0.1:7777/'), true);
+  });
+
+  it('should bypass proxy for [::1] when no_proxy contains localhost', function () {
+    setNoProxy('localhost');
+    assert.strictEqual(shouldBypassProxy('http://[::1]:7777/'), true);
+  });
+
+  it('should bypass proxy for localhost when no_proxy contains 127.0.0.1', function () {
+    setNoProxy('127.0.0.1');
+    assert.strictEqual(shouldBypassProxy('http://localhost:7777/'), true);
+  });
+
+  it('should bypass proxy for localhost when no_proxy contains ::1', function () {
+    setNoProxy('::1');
+    assert.strictEqual(shouldBypassProxy('http://localhost:7777/'), true);
+  });
+
   it('should match wildcard and explicit ports', function () {
     setNoProxy('*.example.com,localhost:8080');
     assert.strictEqual(shouldBypassProxy('http://api.example.com/'), true);
@@ -59,5 +79,64 @@ describe('helpers::shouldBypassProxy', function () {
   it('should bypass everything when no_proxy is *', function () {
     setNoProxy('*');
     assert.strictEqual(shouldBypassProxy('http://anything.example.com/'), true);
+  });
+
+  it('should bypass proxy for the 127.0.0.0/8 subnet when no_proxy contains 127.0.0.1', function () {
+    setNoProxy('localhost,127.0.0.1,::1');
+    assert.strictEqual(shouldBypassProxy('http://127.0.0.2:9191/secret'), true);
+    assert.strictEqual(shouldBypassProxy('http://127.0.0.100:9191/secret'), true);
+    assert.strictEqual(shouldBypassProxy('http://127.1.2.3:9191/secret'), true);
+    assert.strictEqual(shouldBypassProxy('http://127.255.255.254:9191/secret'), true);
+  });
+
+  it('should bypass proxy for the 127.0.0.0/8 subnet when no_proxy contains localhost', function () {
+    setNoProxy('localhost');
+    assert.strictEqual(shouldBypassProxy('http://127.0.0.2:7777/'), true);
+    assert.strictEqual(shouldBypassProxy('http://127.1.2.3:7777/'), true);
+  });
+
+  it('should treat 127.x.x.x as cross-equivalent to localhost and ::1', function () {
+    setNoProxy('::1');
+    assert.strictEqual(shouldBypassProxy('http://127.0.0.5:7777/'), true);
+  });
+
+  it('should bypass proxy for full-form IPv6 loopback 0:0:0:0:0:0:0:1', function () {
+    setNoProxy('localhost,127.0.0.1,::1');
+    assert.strictEqual(shouldBypassProxy('http://[0:0:0:0:0:0:0:1]:8080/'), true);
+  });
+
+  it('should bypass proxy for IPv4-mapped IPv6 loopback ::ffff:127.0.0.1', function () {
+    setNoProxy('localhost,127.0.0.1,::1');
+    assert.strictEqual(shouldBypassProxy('http://[::ffff:127.0.0.1]:8080/'), true);
+  });
+
+  it('should not bypass proxy for non-loopback IPv4 addresses', function () {
+    setNoProxy('localhost,127.0.0.1,::1');
+    assert.strictEqual(shouldBypassProxy('http://128.0.0.1:9191/'), false);
+    assert.strictEqual(shouldBypassProxy('http://126.255.255.255:9191/'), false);
+    assert.strictEqual(shouldBypassProxy('http://10.0.0.1:9191/'), false);
+    assert.strictEqual(shouldBypassProxy('http://192.168.1.1:9191/'), false);
+  });
+
+  it('should not bypass proxy for hosts that merely contain 127 in other octets', function () {
+    setNoProxy('localhost,127.0.0.1,::1');
+    assert.strictEqual(shouldBypassProxy('http://10.0.0.127:8080/'), false);
+    assert.strictEqual(shouldBypassProxy('http://200.127.0.1:8080/'), false);
+  });
+
+  it('should not treat unrelated hosts as loopback', function () {
+    setNoProxy('localhost,127.0.0.1,::1');
+    assert.strictEqual(shouldBypassProxy('http://example.com/'), false);
+  });
+
+  it('should keep loopback alias matching port-aware', function () {
+    setNoProxy('127.0.0.1:8080');
+    assert.strictEqual(shouldBypassProxy('http://127.0.0.2:8080/'), true);
+    assert.strictEqual(shouldBypassProxy('http://127.0.0.2:9090/'), false);
+
+    setNoProxy('localhost:8080');
+    assert.strictEqual(shouldBypassProxy('http://127.0.0.1:8080/'), true);
+    assert.strictEqual(shouldBypassProxy('http://[::1]:8080/'), true);
+    assert.strictEqual(shouldBypassProxy('http://127.0.0.1:8081/'), false);
   });
 });
