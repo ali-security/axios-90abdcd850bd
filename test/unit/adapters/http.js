@@ -2887,6 +2887,45 @@ describe('supports http with nodejs', function () {
 
     });
 
+    it('should enforce maxBodyLength for HTTP/2 streamed uploads', async function () {
+      this.timeout(30000);
+
+      let bytesReceived = 0;
+
+      server = await startHTTPServer((req, res) => {
+        req.on('data', (chunk) => {
+          bytesReceived += chunk.length;
+        });
+        req.on('error', () => {});
+        req.on('end', () => {
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({received: bytesReceived}));
+        });
+      }, {
+        useHTTP2: true
+      });
+
+      const payload = Buffer.alloc(2 * 1024 * 1024, 0x63);
+      const source = stream.Readable.from([payload]);
+
+      await assert.rejects(
+        http2Axios.post(LOCAL_SERVER_URL, source, {
+          maxBodyLength: 1024,
+          headers: {'Content-Type': 'application/octet-stream'}
+        }),
+        (error) => {
+          assert.strictEqual(error.message, 'Request body larger than maxBodyLength limit');
+          assert.strictEqual(error.code, AxiosError.ERR_BAD_REQUEST);
+          return true;
+        }
+      );
+
+      assert.ok(
+        bytesReceived <= 1024 * 4,
+        `server should not receive full payload; got ${bytesReceived}`
+      );
+    });
+
     it(`should support FormData as a payload`, async function () {
       if (typeof FormData !== 'function') {
         this.skip();
